@@ -1,11 +1,61 @@
 import psycopg2
 import requests
 import random
+import confluent_kafka
+import json
 
 BASE_URL = 'https://randomuser.me/api/?nat=us'
 PARTIES = ['Management party' , 'Savior party' , 'Tech republic party']
 
 random.seed(42)
+
+
+def delivery_report(err, msg):
+    if err is not None:
+        print(err)
+    else:
+        print("Message Delivered to:", msg.topic(), msg.partition())
+     
+
+
+def insert_voters(conn, cur, voter):
+    cur.execute("""
+                        INSERT INTO voters (voter_id, voter_name, date_of_birth, gender, nationality, registration_number, address_street, address_city, address_state, address_country, address_postcode, email, phone_number, picture, registered_age)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s,%s,%s,%s,%s)
+                        """,
+                (voter["voter_id"], voter['voter_name'], voter['dob'], voter['gender'],
+                 voter['nationality'], voter['registration_number'], voter['address']['street'],
+                 voter['address']['city'], voter['address']['state'], voter['address']['country'],
+                 voter['address']['postcode'], voter['email'], voter['phone_number'],
+                 voter['picture'], voter['registered_age'])
+                )
+    conn.commit()
+
+
+
+def generate_voter_data():
+    response = requests.get(BASE_URL)
+    if response.status_code == 200:
+        user_data = response.json()['results'][0]
+        return {
+            'voter_id' : user_data['login']['uuid'],
+            'voter_name' : user_data['name']['first'] + user_data['name']['last'],
+            'dob': user_data['dob']['date'],
+            'gender': user_data['gender'],
+            'nationality' : user_data['nat'],
+            'registration_number' : user_data['login']['username'],
+            'address': {
+                'street': str(user_data['location']['street']['number']) + user_data['location']['street']['name'],
+                'city': user_data['location']['city'],
+                'state': user_data['location']['state'],
+                'country': user_data['location']['country'],
+                'postcode': user_data['location']['postcode']
+            },
+            'email': user_data['email'],
+            'phone_number' : user_data['phone'],
+            'picture': user_data['picture']['large'],
+            'registered_age' : user_data['registered']['age']
+        }
 
 
 def generate_candidate_data(candidate_number, total_parties):
@@ -21,8 +71,6 @@ def generate_candidate_data(candidate_number, total_parties):
             'biography': 'I rock',
             'campaign_platform' : 'Jobs for everyone',
             'photo_url' : user_data['picture']['large']
-
-
 
         }
 
@@ -76,6 +124,8 @@ def create_table(conn, cur):
     conn.commit()
 
 if __name__ == '__main__':
+    producer = confluent_kafka.SerializingProducer({'bootstrap.servers': 'localhost:9092'})
+
     try:
         conn = psycopg2.connect('host=localhost dbname=voting user=postgres password=postgres')
         cur = conn.cursor()
@@ -86,12 +136,10 @@ if __name__ == '__main__':
         )
 
         candidates = cur.fetchall()
-        print(candidates)
 
         if len(candidates) == 0:
             for i in range(3):
                 candidate = generate_candidate_data(i, 3)
-                print(candidate)
                 cur.execute("""
                             INSERT INTO candidates(candidate_id,candidate_name,party_affiliation,biography,campaign_platform, photo_url)
                             VALUES(%s, %s,%s,%s,%s,%s)
@@ -102,6 +150,21 @@ if __name__ == '__main__':
                                 ,candidate['biography'],candidate['campaign_platform'], candidate['photo_url']
                             ))
                 conn.commit()
+
+
+        for i in range(1000):
+            voter_data = generate_voter_data()
+            insert_voters(conn, cur,voter_data)
+            producer.produce(
+                'voters_topic',
+                key = voter_data['voter_id'],
+                value= json.dumps(voter_data),
+                on_delivery = delivery_report
+            )
+
+            print('Produced Voter {}, data : {}'.format(i, voter_data))
+
+            producer.flush()
 
     except Exception as e:
         print(e)
