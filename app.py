@@ -16,7 +16,6 @@ def create_kafka_consumer(topic_name):
         value_deserializer=lambda x: json.loads(x.decode('utf-8')))
     return consumer
 
-@st.cache_data
 def fetch_voting_stats():
     conn = psycopg2.connect("host=localhost dbname=voting user=postgres password=postgres")
     cur = conn.cursor()
@@ -79,7 +78,7 @@ def plot_pie_chart(data, title='Gender Distribution of Voters', labels=None):
     return fig
 
 
-@st.cache_data(show_spinner=False)
+
 def split_frame(input_df, rows):
     df = [input_df.loc[i: i + rows - 1, :] for i in range(0, len(input_df), rows)]
     return df

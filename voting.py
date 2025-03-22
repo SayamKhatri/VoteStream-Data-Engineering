@@ -66,6 +66,7 @@ if __name__ == '__main__':
                     cur.execute("""
                             INSERT INTO votes(voter_id, candidate_id, voting_time)
                             VALUES (%s, %s, %s)
+                            ON CONFLICT DO NOTHING
                                 """,
                                 (vote['voter_id'], vote['candidate_id'], vote['voting_time']))
                     conn.commit()
