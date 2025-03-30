@@ -1,4 +1,4 @@
-# VoteStream-Data-Engineering
+# VoteStream-kafka-Data-Engineering
 
 The VoteStream Data Engineering Pipeline is a real-time election voting system designed to capture, process, and visualize voting data instantaneously. By integrating technologies such as Apache Kafka, Apache Spark Streaming, PostgreSQL, and Streamlit, the system ensures efficient data flow from vote casting to real-time analytics, providing stakeholders with up-to-date election insights.
 
